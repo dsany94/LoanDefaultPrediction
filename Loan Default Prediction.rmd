@@ -1,0 +1,1611 @@
+---
+title: " Assignment 2 - Lending Club Case"
+author: "Debangana Sanyal"
+date: "Fall 2024"
+output:
+html_document:
+---
+
+
+```{r results='hide'}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+```
+
+#Loading the data
+```{r}
+lcdf <- read_csv("/Users/debanganasanyal/Desktop/Fall2024/Data Mining/Assignment 2/lcDataSample.csv")
+head(lcdf)
+glimpse(lcdf)
+```
+
+#Exploring data
+```{r}
+#View the data
+head(lcdf)
+
+#Inital exploration of loan status distribution
+lcdf %>% group_by(loan_status) %>% tally()
+
+#Filter for relevant loan statuses
+lcdf1 <- lcdf %>% filter(loan_status == "Fully Paid" | loan_status == "Charged Off")
+
+# Calculate the proportion of 'charged off' vs 'fully paid'
+prop.table(table(lcdf1$loan_status))
+
+#Group by loan status and grade
+lcdf %>% group_by(loan_status, grade) %>% tally()
+
+# Calculate the total number of loans grouped by grade
+total_loans_by_grade <- lcdf %>% group_by(grade) %>% summarise(total_loans = n())
+total_loans_by_grade
+
+# Create a table to see the proportion of defaults for each grade
+table(lcdf$loan_status, lcdf$grade)
+
+# Get the unique sub-grades
+unique_sub_grades <- unique(lcdf$sub_grade)
+view(unique_sub_grades)
+
+# Count the number of loans for each loan status by sub-grade
+loan_status_by_sub_grade <- lcdf %>% 
+  group_by(sub_grade, loan_status) %>% 
+  summarise(count = n(), .groups = 'drop')
+view(loan_status_by_sub_grade)
+
+```
+
+#ii) Count of loan and loan amount against grade and loan status
+```{r}
+lcdf %>% group_by(grade) %>% tally()
+
+# Calculate the total loan amount by grade
+lcdf %>% group_by(grade) %>% summarise(sum(loan_amnt))
+
+# Calculate the average loan amount by loan status
+loan_amount_by_status <- lcdf %>% group_by(loan_status) %>% summarise(avg_loan_amnt = mean(loan_amnt, na.rm = TRUE))
+view(loan_amount_by_status)
+
+# Create a boxplot for loan amounts by grade
+ggplot(lcdf, aes(x = grade, y = loan_amnt)) +
+  geom_boxplot(fill = "skyblue") +
+  labs(title = "Loan Amounts by Grade",
+       x = "Grade",
+       y = "Loan Amount") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+#Plot a histogram for loan amounts by grade
+ggplot(lcdf, aes( x = loan_amnt)) + geom_histogram(aes(fill=grade))
+
+
+# Create a boxplot for loan amounts by loan status
+ggplot(lcdf, aes(x = loan_status, y = loan_amnt)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Loan Amounts by Loan Status",
+       x = "Loan Status",
+       y = "Loan Amount") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#Plot for loan amounts against differerent loan status
+ggplot(lcdf, aes( x = loan_amnt)) + geom_histogram() + facet_wrap(~loan_status)
+
+#Plot for showing grade, loan amount and loan status
+ggplot(lcdf, aes(x = grade, y = loan_amnt, fill = loan_status)) + geom_boxplot()
+
+```
+
+#iii) Interest rate against grade, subgrade and loan status
+```{r}
+#Varying interest rate with grade
+lcdf %>% group_by(grade) %>% summarise(mean(int_rate))
+
+#Varying interest rate with sub-grade
+lcdf %>% group_by(sub_grade) %>% summarise(mean(int_rate))
+
+# Summary statistics for interest rate by grade
+lcdf %>% 
+  group_by(grade) %>% 
+  summarise(mean(int_rate, na.rm = TRUE),
+            sd(int_rate, na.rm = TRUE),
+            min(int_rate, na.rm = TRUE),
+            max(int_rate, na.rm = TRUE))
+
+# Summary statistics for interest rate by subgrade
+lcdf %>% 
+  group_by(sub_grade) %>% 
+  summarise(mean(int_rate, na.rm = TRUE),
+            sd(int_rate, na.rm = TRUE),
+            min(int_rate, na.rm = TRUE),
+            max(int_rate, na.rm = TRUE))
+
+# Summarize the mean interest rate by loan status
+lcdf %>%
+  group_by(loan_status) %>%
+  summarise(mean_int_rate = mean(int_rate, na.rm = TRUE))
+
+#Int_rate relate to loan_status
+ggplot(lcdf, aes( int_rate, fill = loan_status))+geom_boxplot()
+ggplot(lcdf, aes(x = grade, y = int_rate, fill = loan_status))+geom_boxplot()
+
+```
+
+#iv) Actual term by loan grade
+```{r}
+# Filter the dataset to include only fully paid loans
+lcdfFP <- lcdf %>% filter(loan_status == "Fully Paid")
+
+# Ensure last_pymnt_d is correctly formatted as a date
+  lcdfFP$last_pymnt_d <- paste(lcdfFP$last_pymnt_d, "-01", sep = "")
+  lcdfFP$last_pymnt_d <- parse_date_time(lcdfFP$last_pymnt_d, "myd")
+
+# Check if dates are parsed correctly
+print(head(lcdfFP[, c("issue_d", "last_pymnt_d")]))
+
+# Calculate the actual term (in years) for fully paid loans
+lcdfFP <- lcdfFP %>%
+  mutate(actualTerm = as.numeric(as.duration(issue_d %--% last_pymnt_d) / dyears(1)))
+
+# Print the head of actualTerm to confirm that values are being calculated correctly
+print(head(lcdfFP[, c("actualTerm")]))
+
+# Summary of actual term by loan grade (for fully paid loans)
+summary_term_fp <- lcdfFP %>%
+  group_by(grade) %>%
+  summarise(mean_term = mean(actualTerm, na.rm = TRUE),
+            median_term = median(actualTerm, na.rm = TRUE),
+            min_term = min(actualTerm, na.rm = TRUE),
+            max_term = max(actualTerm, na.rm = TRUE))
+
+# View the summary table for fully paid loans
+print(summary_term_fp)
+
+# Create a box plot to visualize actual term by loan grade (for fully paid loans)
+ggplot(lcdfFP, aes(x = grade, y = actualTerm)) +
+  geom_boxplot() +
+  labs(title = "Actual Term by Loan Grade (Fully Paid Loans)", 
+       x = "Loan Grade", 
+       y = "Actual Term (years)")
+```
+
+#V) Annual Return
+```{r}
+# Calculate the annualized percentage return
+lcdf$annRet <- ((lcdf$total_pymnt - lcdf$funded_amnt) / lcdf$funded_amnt) * (12/36) * 100
+
+# Summarize by grade
+summary_by_grade <- lcdf %>% group_by(grade) %>% 
+  summarise(nLoans = n(),
+            sum_charged_off = sum(loan_status == "Charged Off"),
+            avg_int_rate = mean(int_rate),
+            sd_int_rate = sd(int_rate),
+            avg_loan_amnt = mean(loan_amnt),
+            avg_total_pymnt = mean(total_pymnt),
+            avg_annRet = mean(annRet),
+            sd_annRet = sd(annRet),
+            min_annRet = min(annRet),
+            max_annRet = max(annRet))
+
+print(summary_by_grade)
+
+# Boxplot of annualized return by grade
+ggplot(lcdf, aes(x = grade, y = annRet)) + geom_boxplot() + labs(title = "Annualized Returns by Grade", y = "Annual Return", x = "Grade")
+
+# Summarize returns by sub-grade
+summary_by_sub_grade <- lcdf %>% group_by(sub_grade) %>% 
+  summarise(nLoans = n(),
+            avg_int_rate = mean(int_rate),
+            avg_annRet = mean(annRet),
+            sd_annRet = sd(annRet),
+            min_annRet = min(annRet),
+            max_annRet = max(annRet))
+
+print(summary_by_sub_grade)
+
+# Compare negative returns (Where do the negative numbers for minRet come from?)
+negative_returns <- lcdf %>% select(loan_status, int_rate, funded_amnt, total_pymnt, annRet) %>% filter(annRet < 0)
+head(negative_returns)
+
+# Are the negative returns from 'Charged Off' loans?
+charged_off_count <- lcdf %>% select(loan_status, int_rate, funded_amnt, total_pymnt, annRet) %>% filter(annRet < 0) %>% count(loan_status)
+print(charged_off_count)
+
+# Returns from Fully Paid Loans
+fully_paid_returns <- lcdf %>% 
+  filter(loan_status == "Fully Paid") %>% 
+  group_by(grade) %>% 
+  summarise(nLoans = n(),
+            avgInterest = mean(int_rate),
+            avgLoanAmt = mean(loan_amnt),
+            avgPmnt = mean(total_pymnt),
+            avgRet = mean(annRet),
+            minRet = min(annRet),
+            maxRet = max(annRet))
+
+print(fully_paid_returns)
+
+# Returns from Charged Off Loans
+charged_off_returns <- lcdf %>% 
+  filter(loan_status == "Charged Off") %>% 
+  group_by(grade) %>% 
+  summarise(nLoans = n(),
+            avgInterest = mean(int_rate),
+            avgLoanAmt = mean(loan_amnt),
+            avgPmnt = mean(total_pymnt),
+            avgRet = mean(annRet),
+            minRet = min(annRet),
+            maxRet = max(annRet))
+
+print(charged_off_returns)
+
+# Boxplot of returns from charged-off loans
+ggplot(lcdf %>% filter(loan_status == "Charged Off"), aes(x = grade, y = annRet)) + 
+  geom_boxplot() + 
+  labs(title = "Annualized Returns from Charged Off Loans by Grade", y = "Annual Return", x = "Grade")
+
+# Income from charged-off loans
+charged_off_income <- lcdf %>% 
+  group_by(grade, loan_status) %>% 
+  summarise(Recovery = sum(recoveries),
+            Payments = sum(total_pymnt),
+            Total = Recovery + Payments,
+            Cost = sum(funded_amnt),
+            Dif = Total - Cost)
+
+print(charged_off_income)
+
+# Variables for recoveries and total recoveries
+recovery_variables <- lcdf %>% 
+  group_by(loan_status) %>% 
+  summarise(avgRec = mean(recoveries),
+            avgPmnt = mean(total_pymnt),
+            mean_principal_recovered = mean(total_rec_prncp),
+            mean_interest_recovered = mean(total_rec_int),
+            mean_late_fees = mean(total_rec_late_fee))
+
+print(recovery_variables)
+
+###Explicitly Comparing Returns to Interest Rates
+
+# Compare average return and interest rate by grade
+comparison_by_grade <- lcdf %>% 
+  group_by(grade) %>% 
+  summarise(avg_interest_rate = mean(int_rate, na.rm = TRUE),
+            avg_return = mean(annRet, na.rm = TRUE),
+            return_vs_interest = mean(annRet, na.rm = TRUE) - mean(int_rate, na.rm = TRUE))
+
+print("Comparison of Returns and Interest Rates by Grade:")
+print(comparison_by_grade)
+
+# Compare average return and interest rate by sub-grade
+comparison_by_sub_grade <- lcdf %>% 
+  group_by(sub_grade) %>% 
+  summarise(avg_interest_rate = mean(int_rate, na.rm = TRUE),
+            avg_return = mean(annRet, na.rm = TRUE),
+            return_vs_interest = mean(annRet, na.rm = TRUE) - mean(int_rate, na.rm = TRUE))
+
+print("Comparison of Returns and Interest Rates by Sub-Grade:")
+print(comparison_by_sub_grade)
+
+
+```
+
+#vi) Purpose for taking loans
+```{r}
+# Summarizing loans by purpose
+view(lcdf %>% group_by(purpose) %>%
+  summarise(
+    nLoans = n(),                        
+    avgLoanAmt = mean(loan_amnt),         
+    totalLoanAmt = sum(loan_amnt)         
+  ) %>%
+  arrange(desc(nLoans))) 
+
+# Count defaults by loan purpose
+view(lcdf %>% 
+  filter(loan_status == "Charged Off") %>% 
+  group_by(purpose) %>% 
+  summarise(nDefaults = n(), 
+            avgLoanAmt = mean(loan_amnt),
+            totalLoanAmt = sum(loan_amnt)) %>% 
+  arrange(desc(nDefaults)))
+
+# Summarize loan grades by purpose
+view(lcdf %>%
+  group_by(purpose, grade) %>%
+  summarise(nLoans = n(),
+            avgLoanAmt = mean(loan_amnt),
+            avgInterest = mean(int_rate)) %>%
+  arrange(purpose))
+```
+#vii
+```{r}
+# Load the dataset into a new dataframe 'lcdfCO'
+lcdfCO <- lcdf
+
+# EMPLOYMENT LENGTH IMPACT ON LOAN ATTRIBUTES
+lcdfCO %>% 
+  group_by(emp_length) %>% 
+  summarise(nLoans = n(), 
+            defaults = sum(loan_status == "Charged Off"), 
+            defaultRate = defaults / nLoans, 
+            avgInterest = mean(int_rate), 
+            stdInterest = sd(int_rate), 
+            avgLoanAmt = mean(loan_amnt), 
+            avgPmnt = mean(total_pymnt))
+
+# ANNUAL INCOME IMPACT ON LOAN GRADE
+# Display summary statistics for 'annual_inc' (annual income)
+summary(lcdfCO$annual_inc)
+
+# Plot a boxplot to visualize the relationship between annual income and loan grade
+# This helps show how income is distributed across different loan grades
+ggplot(lcdfCO, aes(x = log(annual_inc), y = grade)) + 
+  geom_boxplot() + 
+  labs(title = "Impact of Annual Income on Loan Grade", 
+       x = "Log of Annual Income", 
+       y = "Loan Grade")
+
+# Group by 'annual_inc' and calculate similar metrics as for employment length:
+lcdfCO %>% 
+  group_by(annual_inc) %>% 
+  summarise(nLoans = n(), 
+            defaults = sum(loan_status == "Charged Off"), 
+            defaultRate = defaults / nLoans, 
+            avgInterest = mean(int_rate), 
+            stdInterest = sd(int_rate), 
+            avgLoanAmt = mean(loan_amnt), 
+            avgPmnt = mean(total_pymnt))
+
+# IMPACT OF LOAN AMOUNT ON EMPLOYMENT LENGTH
+# Visualize the distribution of loan amounts across different employment lengths
+# This shows how the loan amounts vary with the borrower's employment length
+ggplot(lcdfCO, aes(x = loan_amnt, y = emp_length)) + 
+  geom_boxplot() + 
+  labs(title = "Loan Amount Distribution by Employment Length", 
+       x = "Loan Amount", 
+       y = "Employment Length")
+
+```
+
+#viii Create new derived attributes
+```{r}
+# Step 1: Creating Derived Attributes
+# Inquiry rate: Ratio of inquiries in the last 6 months to inquiries in the previous 6-12 months
+lcdf$inq_rate <- lcdf$inq_last_6mths / (lcdf$inq_last_12m - lcdf$inq_last_6mths)
+
+# Open account rate: Ratio of open installment accounts in the last 12 months to the previous 12-24 months
+lcdf$open_acc_rate <- lcdf$open_il_12m / (lcdf$open_il_24m - lcdf$open_il_12m)
+
+# Loan-to-Income Ratio: Ratio of loan amount to annual income
+lcdf$loan_to_income_ratio <- lcdf$loan_amnt / lcdf$annual_inc
+
+#Summary of Derived Attributes
+summary(lcdf)
+
+#Analysis of Derived Attributes
+
+# Relationship between derived attributes and loan status
+lcdf %>% 
+  group_by(loan_status) %>% 
+  summarise(
+    mean_inq_rate = mean(inq_rate, na.rm = TRUE), 
+    mean_open_acc_rate = mean(open_acc_rate, na.rm = TRUE), 
+    mean_loan_to_income_ratio = mean(loan_to_income_ratio, na.rm = TRUE)
+  )
+
+# Relationship between derived attributes and loan grade
+lcdf %>% 
+  group_by(grade) %>% 
+  summarise(
+    mean_inq_rate = mean(inq_rate, na.rm = TRUE), 
+    mean_open_acc_rate = mean(open_acc_rate, na.rm = TRUE), 
+    mean_loan_to_income_ratio = mean(loan_to_income_ratio, na.rm = TRUE)
+  )
+
+#Creating Derived Attributes with handling for division by zero
+lcdf$inq_rate <- ifelse((lcdf$inq_last_12m - lcdf$inq_last_6mths) > 0, 
+                        lcdf$inq_last_6mths / (lcdf$inq_last_12m - lcdf$inq_last_6mths), NA)
+
+lcdf$open_acc_rate <- ifelse((lcdf$open_il_24m - lcdf$open_il_12m) > 0, 
+                             lcdf$open_il_12m / (lcdf$open_il_24m - lcdf$open_il_12m), NA)
+
+lcdf$loan_to_income_ratio <- ifelse(lcdf$annual_inc > 0, 
+                                    lcdf$loan_amnt / lcdf$annual_inc, NA)
+
+# Exploring default rate based on derived attributes
+lcdf %>% 
+  filter(loan_status == "Charged Off") %>% 
+  summarise(
+    mean_inq_rate = mean(inq_rate, na.rm = TRUE), 
+    mean_open_acc_rate = mean(open_acc_rate, na.rm = TRUE), 
+    mean_loan_to_income_ratio = mean(loan_to_income_ratio, na.rm = TRUE)
+  )
+
+```
+
+#b 
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+
+# (2) Convert non-standard missing values only for character columns to avoid the POSIXlt error
+# Identify character columns
+char_cols <- sapply(lcdf, is.character)
+
+# Only replace empty strings or non-standard NA values in character columns
+lcdf[, char_cols] <- lapply(lcdf[, char_cols], function(x) {
+  x[x == ""] <- NA
+  x[x == "NA"] <- NA
+  x[x == "N/A"] <- NA
+  return(x)
+})
+
+# (3) Identify columns with missing values and their proportions
+missing_columns <- colnames(lcdf)[colSums(is.na(lcdf)) > 0]
+print("Columns with missing values:")
+print(missing_columns)
+
+# Calculate the proportion of missing values for each variable
+missing_proportions <- colMeans(is.na(lcdf))[colMeans(is.na(lcdf)) > 0]
+print("Proportion of missing values in columns:")
+print(missing_proportions)
+
+# (4) Handle specific variables with missing data based on the proportion and context
+
+# For 'open_acc_6m' which has 97% missing values, let's replace missing values with 0
+sum(is.na(lcdf$open_acc_6m))
+lcdf <- lcdf %>% mutate(open_acc_6m = replace_na(open_acc_6m, 0))
+# Check if missing values were replaced
+sum(is.na(lcdf$open_acc_6m))
+
+# (5) Variables with more than 80% missing data like 'mths_since_last_record'
+# Depending on the context, we might consider excluding this variable
+sum(is.na(lcdf$mths_since_last_record))
+
+# For 'mths_since_last_delinq', which has around 50% missing values
+# Investigate if there's a pattern based on loan status
+lcdf %>% filter(is.na(mths_since_last_delinq)) %>% group_by(loan_status) %>% tally()
+
+# For 'mths_since_recent_inq', which has around 10% missing values
+# Investigate if there is a pattern for loan status
+lcdf %>% filter(is.na(mths_since_recent_inq)) %>% group_by(loan_status) %>% tally()
+
+
+# (6) Remove variables with more than 50% missing values (e.g., 'open_acc_6m' and similar variables)
+remove_vars <- names(lcdf)[colMeans(is.na(lcdf)) > 0.5]
+lcdf <- lcdf %>% select(-all_of(remove_vars))
+print("Dimensions after removing high missing value columns:")
+print(dim(lcdf))  # Check the new dimensions of the data
+
+# Removed variables due to high missing values, potential data leakage, or low variability:
+# High missing values: "id", "member_id", "url", "desc", "next_pymnt_d", 
+# "mths_since_last_delinq", "mths_since_last_record", "revol_bal_joint", 
+# "sec_app_*" (e.g., "sec_app_earliest_cr_line"), "hardship_*" (e.g., "hardship_type"),
+# "debt_settlement_flag_date", "settlement_*" (e.g., "settlement_status"), 
+# "annual_inc_joint", "dti_joint", "verification_status_joint", "open_il_12m", 
+# "mths_since_rcnt_il", "total_bal_il", "il_util", "inq_fi", "total_cu_tl".
+
+# Data leakage: "funded_amnt", "funded_amnt_inv", "pymnt_plan", "grade", 
+# "sub_grade", "out_prncp", "total_pymnt", "recoveries", "last_pymnt_d", "policy_code".
+
+# Low variability: "hardship_flag", "disbursement_method".
+
+
+# (7) Impute missing values for the remaining variables
+# First, identify the remaining columns with missing data
+remaining_missing_vars <- colnames(lcdf)[colSums(is.na(lcdf)) > 0]
+summary(lcdf[, remaining_missing_vars])
+
+# Example: Impute missing values for 'bc_open_to_buy' with the median
+lcx <- lcdf[, remaining_missing_vars]  # Create a temporary dataset
+lcx <- lcx %>% replace_na(list(bc_open_to_buy = median(lcx$bc_open_to_buy, na.rm = TRUE)))
+
+# After verifying on the temporary dataset, apply the changes to the original dataset
+lcdf <- lcdf %>% replace_na(list(
+  mths_since_last_delinq = -500, 
+  bc_open_to_buy = median(lcdf$bc_open_to_buy, na.rm = TRUE),
+  mo_sin_old_il_acct = 1000, 
+  mths_since_recent_bc = 1000, 
+  mths_since_recent_inq = 50, 
+  num_tl_120dpd_2m = median(lcdf$num_tl_120dpd_2m, na.rm = TRUE), 
+  percent_bc_gt_75 = median(lcdf$percent_bc_gt_75, na.rm = TRUE), 
+  bc_util = median(lcdf$bc_util, na.rm = TRUE)
+))
+
+# (8) Check if all missing values have been addressed
+final_missing <- colMeans(is.na(lcdf))[colMeans(is.na(lcdf)) > 0]
+print("Final check for remaining missing values:")
+print(final_missing)
+
+# (9) If there are any remaining missing values, consider imputing those with the median for numeric variables
+lcdf <- lcdf %>% mutate_if(is.numeric, ~ifelse(is.na(.), median(., na.rm = TRUE), .))
+
+# Verify that there are no more missing values in the dataset
+final_check <- colSums(is.na(lcdf)) > 1
+print("Columns still having missing values:")
+print(colnames(final_check))
+
+```
+
+#c Consider the potential for data leakage
+```{r}
+  # Variables that may cause data leakage and need to be removed
+varsToRemove <- c(
+  'funded_amnt_inv', 'term', 'emp_title', 'pymnt_plan', 'earliest_cr_line', 'title', 'zip_code',
+  'addr_state', 'out_prncp', 'out_prncp_inv', 'total_rec_prncp', 'total_rec_int', 
+  'total_rec_late_fee', 'recoveries', 'collection_recovery_fee', 'last_credit_pull_d', 'policy_code', 
+  'disbursement_method', 'debt_settlement_flag', 'application_type', 'last_pymnt_d', 'last_pymnt_amnt', 
+  'debt_settlement_flag_date', 'issue_d', 'total_pymnt_inv', 'mths_since_recent_bc', 
+  'mths_since_recent_inq', 'delinq_amnt', 'num_tl_120dpd_2m', 'num_tl_90g_dpd_24m'
+)
+
+# Check which of the variables actually exist in the dataset
+existing_varsToRemove <- varsToRemove[varsToRemove %in% colnames(lcdf)]
+
+# Remove only the columns that exist in the dataset
+lcdf <- lcdf %>% select(-all_of(existing_varsToRemove))
+
+# Drop variables starting with "hardship" as they indicate financial difficulty post-loan issuance
+hardship_vars <- colnames(lcdf)[grepl("^hardship", colnames(lcdf))]
+lcdf <- lcdf %>% select(-all_of(hardship_vars))
+
+# Drop variables starting with "settlement" as they are related to debt settlement post-loan issuance
+settlement_vars <- colnames(lcdf)[grepl("^settlement", colnames(lcdf))]
+lcdf <- lcdf %>% select(-all_of(settlement_vars))
+
+# Print the remaining columns to verify
+print("Remaining columns after removing potential leakage variables:")
+print(colnames(lcdf))
+
+# Remaining variables after removing those with potential data leakage:
+# Retained variables include:
+# 
+# 1. Loan details: "loan_amnt", "funded_amnt", "int_rate", "installment"
+# 2. Borrower info: "emp_length", "home_ownership", "annual_inc", "verification_status", "dti"
+# 3. Credit history: "delinq_2yrs", "inq_last_6mths", "open_acc", "pub_rec", "revol_util", "total_acc"
+# 4. Payment & balances: "collections_12_mths_ex_med", "total_pymnt", "tot_coll_amt", "total_rev_hi_lim"
+# 5. Derived metrics: "annRet", "loan_to_income_ratio", and other account activity indicators.
+
+
+```
+
+#3 Univariate Analysis for Predicting loan_status
+#The goal is to measure the relationship between the predictor variables and the dependent variable (loan_status)
+```{r}
+# Load necessary libraries
+library(ROCR)
+library(broom)
+
+# Ensure 'loan_status' is binary numeric (1 for "Fully Paid", 0 for "Charged Off")
+lcdf$loan_status <- ifelse(lcdf$loan_status == "Fully Paid", 1, 0)
+
+# Round numeric variables for consistency
+lcdf <- lcdf %>% mutate_if(is.numeric, function(x) round(as.numeric(x), 2))
+
+# Calculate AUC for each numeric variable
+aucsNum <- sapply(lcdf %>% select_if(is.numeric), function(x) {
+  pred <- prediction(x, lcdf$loan_status)
+  perf <- performance(pred, "auc")
+  return(as.numeric(perf@y.values))
+})
+
+# Convert factor variables to numeric and calculate AUC
+aucAll <- sapply(lcdf %>% mutate_if(is.factor, as.numeric) %>% select_if(is.numeric), function(x) {
+  pred <- prediction(x, lcdf$loan_status)
+  perf <- performance(pred, "auc")
+  return(as.numeric(perf@y.values))
+})
+
+# Display AUC values for variables with AUC > 0.55
+important_auc <- aucAll[aucAll > 0.55]
+print("Variables with AUC > 0.55:")
+print(important_auc)
+
+# Optionally, display in sorted order or specific range
+# Sorting the AUC values in descending order
+sorted_auc <- tidy(aucAll) %>% arrange(desc(aucAll))
+print("Sorted AUC values:")
+print(sorted_auc)
+
+# Filter for AUC values in a specific range (optional)
+filtered_auc <- tidy(aucAll[aucAll >= 0.5 & aucAll < 0.6])
+print("AUC values between 0.5 and 0.6:")
+print(filtered_auc)
+
+# Analyze if any variables show too high AUC values that may indicate data leakage
+# Variables like 'actualReturn', 'actualTerm' could show high AUC due to leakage
+print("Check for high AUC variables:")
+print(sorted_auc)
+
+# Note: These variables might indicate leakage if they have exceptionally high AUC
+
+```
+#4a
+```{r}
+# Set the proportion for the training set
+TRNPROP <- 0.7  # 70% training data
+
+# Number of rows in the dataset
+nr <- nrow(lcdf)
+
+# Randomly sample training indices
+set.seed(123)  # For reproducibility
+trnIndex <- sample(1:nr, size = round(TRNPROP * nr), replace = FALSE)
+
+# Create training and validation datasets
+lcdfTrn <- lcdf[trnIndex, ]  # Training data
+lcdfTst <- lcdf[-trnIndex, ]  # Validation data
+
+# Variables that may cause leakage or are irrelevant to prediction tasks
+# Exclude variables already removed in 2c, only include new ones relevant for part 4a
+varsOmit <- c('annRet', 'actual_term', 'annualRetBi')
+
+# Check which variables in 'varsOmit' exist in the dataset
+existing_varsOmit <- varsOmit[varsOmit %in% colnames(lcdfTrn)]
+
+# Drop the variables that exist in both training and testing datasets
+lcdfTrn <- lcdfTrn %>% select(-all_of(existing_varsOmit))
+lcdfTst <- lcdfTst %>% select(-all_of(existing_varsOmit))
+
+# Check the dimensions of the training and testing datasets after dropping variables
+dim(lcdfTrn)  # Training data (should be 70% of the original dataset)
+dim(lcdfTst)  # Testing data (should be 30% of the original dataset)
+
+
+```
+
+#4b
+```{r}
+# Load necessary libraries
+library(caret)   # For model training and confusion matrix
+library(pROC)    # For ROC curve
+library(ggplot2) # For Lift chart
+
+# (1) Train a Logistic Regression Model on the Training Data
+# Define the formula for logistic regression
+formula <- loan_status ~ .
+
+# Train the model using logistic regression (glm with family = binomial for binary classification)
+model <- glm(formula, data = lcdfTrn, family = binomial)
+
+# (2) Predict probabilities on the validation dataset (lcdfTst)
+predicted_prob <- predict(model, lcdfTst, type = "response")  # Get probabilities for the positive class (loan default)
+
+# Convert probabilities to binary outcome (threshold = 0.5)
+predicted_class <- ifelse(predicted_prob > 0.5, 1, 0)
+
+# (3) Evaluate performance using a Confusion Matrix
+conf_matrix <- confusionMatrix(as.factor(predicted_class), as.factor(lcdfTst$loan_status))
+print("Confusion Matrix:")
+print(conf_matrix)
+
+# (4) ROC Curve Analysis
+roc_curve <- roc(lcdfTst$loan_status, predicted_prob)
+plot(roc_curve, main = "ROC Curve", col = "blue")
+print("AUC:")
+print(auc(roc_curve))  # Print AUC
+
+# (5) Lift analysis (using deciles)
+lcdfTst$predicted_prob <- predicted_prob  # Add predicted probabilities to the test set
+lcdfTst <- lcdfTst %>% mutate(decile = ntile(predicted_prob, 10))  # Divide predictions into deciles
+
+# Calculate lift by decile
+lift_table <- lcdfTst %>%
+  group_by(decile) %>%
+  summarize(default_rate = mean(loan_status))
+
+# Plot lift chart
+ggplot(lift_table, aes(x = decile, y = default_rate)) +
+  geom_line(color = "blue") +
+  geom_point() +
+  labs(title = "Lift Chart", x = "Decile", y = "Default Rate")
+```
+
+#5 Decision Tree using rpart
+```{r}
+library(rpart)
+library(rpart.plot)  # For enhanced tree plotting
+library(pROC)  # For ROC curve and AUC calculation
+
+# Ensure varsOmit only contains existing columns
+existing_varsOmit <- intersect(colnames(lcdfTrn), varsOmit)
+
+# Check and correct the labels in loan_status for both train and test datasets
+# Assuming the labels are numeric (0 = Charged Off, 1 = Fully Paid)
+lcdfTrn$loan_status <- ifelse(lcdfTrn$loan_status == 1, "Fully Paid", "Charged Off")
+lcdfTst$loan_status <- ifelse(lcdfTst$loan_status == 1, "Fully Paid", "Charged Off")
+
+# Ensure loan_status is a factor with the correct levels in both train and test sets
+lcdfTrn$loan_status <- factor(lcdfTrn$loan_status, levels = c("Charged Off", "Fully Paid"))
+lcdfTst$loan_status <- factor(lcdfTst$loan_status, levels = c("Charged Off", "Fully Paid"))
+
+# Training the decision tree model with a limited depth to reduce complexity
+lcDT1 <- rpart(loan_status ~ ., 
+               data = lcdfTrn %>% select(-all_of(existing_varsOmit)), 
+               method = "class", 
+               parms = list(split = "information"), 
+               control = rpart.control(cp = 0.0, minsplit = 50, maxdepth = 5))  # Limit the tree to 5 levels deep
+
+# Print complexity parameter table for pruning analysis
+printcp(lcDT1)
+
+# Find the best complexity parameter (cp) and prune the tree
+mincp_i <- which.min(lcDT1$cptable[, 'xerror'])
+optError <- lcDT1$cptable[mincp_i, "xerror"] + lcDT1$cptable[mincp_i, "xstd"]
+optCP_i <- which.min(abs(lcDT1$cptable[,"xerror"] - optError))
+optCP <- lcDT1$cptable[optCP_i, "CP"]
+
+# Prune the tree based on the best cp value
+lcDT1_p <- prune(lcDT1, cp = optCP)
+
+# Plot the pruned decision tree using rpart.plot with reduced depth and less information
+rpart.plot(lcDT1_p, type = 2, extra = 104, under = TRUE, cex = 0.7, main = "Pruned Decision Tree")
+
+# Optionally: Further reduce the displayed information and text size
+rpart.plot(lcDT1_p, type = 1, extra = 0, under = FALSE, cex = 0.5, main = "Simplified Decision Tree")
+
+# Prediction on the training set
+train_pred <- predict(lcDT1_p, newdata = lcdfTrn, type = "class")
+
+# Ensure train_pred and lcdfTrn$loan_status are factors with the same levels
+train_pred <- as.factor(train_pred)
+actual_train <- as.factor(lcdfTrn$loan_status)
+levels(train_pred) <- levels(actual_train)
+
+# Confusion matrix for training set performance
+train_cm <- confusionMatrix(train_pred, actual_train)
+print(train_cm)
+
+# Prediction on the validation set
+val_pred <- predict(lcDT1_p, newdata = lcdfTst, type = "class")
+
+# Ensure val_pred and lcdfTst$loan_status are factors with the same levels
+val_pred <- as.factor(val_pred)
+actual_val <- as.factor(lcdfTst$loan_status)
+levels(val_pred) <- levels(actual_val)
+
+# Confusion matrix for validation set performance
+val_cm <- confusionMatrix(val_pred, actual_val)
+print(val_cm)
+
+# Calculate AUC on the validation set
+prob_val <- predict(lcDT1_p, newdata = lcdfTst, type = "prob")[, 2]
+
+# Run the ROC performance function using pROC
+roc_curve <- roc(lcdfTst$loan_status, prob_val)  # Create ROC curve object
+auc_val <- auc(roc_curve)  # Calculate AUC
+
+# Plot the ROC curve
+plot(roc_curve, main = "ROC Curve for Decision Tree", col = "blue")
+abline(a = 0, b = 1, lty = 2, col = "gray")  # Add diagonal reference line
+print(paste("AUC Value:", auc_val))
+
+# Optional: Decile lift performance for validation set (if defined)
+# fnDecileLiftsPerformance_defaults(prob_val, lcdfTst)
+
+# Optional: Further prune the tree if necessary
+lcDT1_p_small <- prune(lcDT1, cp = 0.01)  # Adjust cp to prune the tree more aggressively
+
+# Plot the further pruned tree
+rpart.plot(lcDT1_p_small, type = 2, extra = 104, under = TRUE, cex = 0.7, main = "Further Pruned Decision Tree")
+
+
+```
+#6 Random Forest and Boosted Tree Model
+```{r}
+# Load necessary libraries
+library(ranger)
+library(xgboost)
+library(pROC)  # For ROC curve and AUC calculation
+
+# Ensure varsOmit only contains existing columns
+existing_varsOmit <- intersect(colnames(lcdfTrn), varsOmit)
+
+### Random Forest Model using Ranger
+# Random Forest with 200 trees and permutation importance
+rfModel1 <- ranger(loan_status ~ ., 
+                   data = lcdfTrn %>% select(-all_of(existing_varsOmit)), 
+                   num.trees = 200, 
+                   importance = 'permutation', 
+                   probability = TRUE)
+
+# Variable Importance for Random Forest
+vimp_rfGp <- importance(rfModel1)
+print("Random Forest Variable Importance:")
+print(vimp_rfGp)
+
+# Random Forest Predictions
+scoreTrn_rf <- predict(rfModel1, lcdfTrn)
+scoreTst_rf <- predict(rfModel1, lcdfTst)
+
+# Confusion matrix for Random Forest on test set
+table(pred = scoreTst_rf$predictions[, "Fully Paid"] > 0.7, actual = lcdfTst$loan_status)
+
+# AUC for Random Forest
+# Extract probabilities for the "Fully Paid" class
+prob_rf <- scoreTst_rf$predictions[, "Fully Paid"]
+
+# Run the ROC performance using pROC
+roc_rf <- roc(lcdfTst$loan_status, prob_rf)
+auc_rf <- auc(roc_rf)
+
+# Plot the ROC curve
+plot(roc_rf, main = "ROC Curve for Random Forest", col = "blue")
+abline(a = 0, b = 1, lty = 2, col = "gray")
+print(paste("AUC Value for Random Forest:", auc_rf))
+
+### Boosted Tree Model using XGBoost
+# Consistent preprocessing for training and testing data
+train_matrix <- model.matrix(loan_status ~ . -1, data = lcdfTrn %>% select(-all_of(existing_varsOmit)))
+test_matrix <- model.matrix(loan_status ~ . -1, data = lcdfTst %>% select(-all_of(existing_varsOmit)))
+
+# Align columns of test_matrix with train_matrix
+common_cols <- intersect(colnames(train_matrix), colnames(test_matrix))
+train_matrix <- train_matrix[, common_cols]
+test_matrix <- test_matrix[, common_cols]
+
+# Convert loan_status to numeric binary labels (0 = "Charged Off", 1 = "Fully Paid")
+label_train <- ifelse(lcdfTrn$loan_status == "Fully Paid", 1, 0)
+label_test <- ifelse(lcdfTst$loan_status == "Fully Paid", 1, 0)
+
+dtrain <- xgb.DMatrix(data = train_matrix, label = label_train)
+dtest <- xgb.DMatrix(data = test_matrix, label = label_test)
+
+# Train Boosted Tree Model
+xgb_params <- list(objective = "binary:logistic", eval_metric = "auc", max_depth = 6, eta = 0.1, nthread = 2)
+xgbModel <- xgb.train(params = xgb_params, data = dtrain, nrounds = 100)
+
+# Predictions for XGBoost
+scoreTst_xgb <- predict(xgbModel, dtest)
+
+# AUC for Boosted Tree
+roc_xgb <- roc(label_test, scoreTst_xgb)
+auc_xgb <- auc(roc_xgb)
+
+# Plot the ROC curve for Boosted Tree
+plot(roc_xgb, main = "ROC Curve for Boosted Tree", col = "red")
+abline(a = 0, b = 1, lty = 2, col = "gray")
+print(paste("AUC Value for Boosted Tree:", auc_xgb))
+
+# Variable importance for Boosted Tree
+importance_matrix <- xgb.importance(model = xgbModel)
+print("Boosted Tree Variable Importance:")
+print(importance_matrix)
+xgb.plot.importance(importance_matrix)
+
+```
+#6b 
+```{r}
+# Load necessary libraries
+library(pROC)
+
+# Helper function to calculate ROC and AUC using pROC
+calculate_ROC_AUC <- function(predicted_prob, actual) {
+  roc_curve <- roc(actual, predicted_prob)
+  auc_value <- auc(roc_curve)
+  return(list(roc_curve = roc_curve, auc_value = auc_value))
+}
+
+# Function to calculate F1 score
+calculate_F1 <- function(predictions, actual, threshold = 0.5) {
+  predicted_class <- ifelse(predictions > threshold, "Fully Paid", "Charged Off")
+  actual_class <- factor(actual, levels = c("Charged Off", "Fully Paid"))
+  predicted_class <- factor(predicted_class, levels = c("Charged Off", "Fully Paid"))
+  confusion <- confusionMatrix(predicted_class, actual_class)
+  f1_score <- confusion$byClass["F1"]
+  return(f1_score)
+}
+
+### Performance Evaluation for Decision Tree Model ###
+prob_val_dt <- predict(lcDT1_p, newdata = lcdfTst, type = "prob")[, 2]
+roc_auc_dt <- calculate_ROC_AUC(prob_val_dt, lcdfTst$loan_status)
+f1_dt <- calculate_F1(prob_val_dt, lcdfTst$loan_status)
+
+# Variable Importance for Decision Tree
+varImp_dt <- varImp(lcDT1_p, scale = FALSE)
+varImp_dt <- as.data.frame(varImp_dt)  # Ensure it's a data frame
+
+# Check the structure of varImp_dt to ensure we know which column to sort by
+print(varImp_dt)
+
+# Add a column for variable names if needed
+varImp_dt$Variables <- rownames(varImp_dt)
+
+# Sorting by the appropriate column - assuming it's 'Overall' or another relevant name
+if ("Overall" %in% colnames(varImp_dt)) {
+  varImp_dt <- varImp_dt[order(-varImp_dt$Overall), ]  # Sort by the 'Overall' column
+} else {
+  first_col_name <- colnames(varImp_dt)[1]  # Get the first column name if not 'Overall'
+  varImp_dt <- varImp_dt[order(-varImp_dt[[first_col_name]]), ]
+}
+
+# Print top 5 important variables for Decision Tree
+print("Top 5 Important Variables - Decision Tree:")
+print(varImp_dt[1:5, ])
+
+### Performance Evaluation for Random Forest Model ###
+prob_val_rf <- predict(rfModel1, lcdfTst)$predictions[, "Fully Paid"]
+roc_auc_rf <- calculate_ROC_AUC(prob_val_rf, lcdfTst$loan_status)
+f1_rf <- calculate_F1(prob_val_rf, lcdfTst$loan_status)
+
+# Variable Importance for Random Forest
+vimp_rfGp <- as.data.frame(importance(rfModel1))
+vimp_rfGp$Variables <- rownames(vimp_rfGp)  # Store variable names
+vimp_rfGp <- vimp_rfGp[order(-vimp_rfGp$importance), ]  # Sort by importance
+
+# Print top 5 important variables for Random Forest
+print("Top 5 Important Variables - Random Forest:")
+print(vimp_rfGp[1:5, ])
+
+### Performance Evaluation for Boosted Tree Model ###
+prob_val_xgb <- predict(xgbModel, dtest)
+roc_auc_xgb <- calculate_ROC_AUC(prob_val_xgb, lcdfTst$loan_status)
+f1_xgb <- calculate_F1(prob_val_xgb, lcdfTst$loan_status)
+
+# Variable Importance for Boosted Tree
+importance_matrix <- xgb.importance(model = xgbModel)
+print("Top 5 Important Variables - Boosted Tree:")
+print(importance_matrix[order(-importance_matrix$Gain), ][1:5, ])  # Gain is used to order in xgboost
+
+# Print AUC and F1 scores
+cat("AUC and F1 Score Comparison:\n")
+cat("Decision Tree AUC:", roc_auc_dt$auc_value, " F1 Score:", f1_dt, "\n")
+cat("Random Forest AUC:", roc_auc_rf$auc_value, " F1 Score:", f1_rf, "\n")
+cat("Boosted Tree AUC:", roc_auc_xgb$auc_value, " F1 Score:", f1_xgb, "\n")
+
+# Plotting all ROC curves for comparison
+roc_dt_df <- data.frame(tpr = roc_auc_dt$roc_curve$sensitivities, fpr = roc_auc_dt$roc_curve$specificities, model = "Decision Tree")
+roc_rf_df <- data.frame(tpr = roc_auc_rf$roc_curve$sensitivities, fpr = roc_auc_rf$roc_curve$specificities, model = "Random Forest")
+roc_xgb_df <- data.frame(tpr = roc_auc_xgb$roc_curve$sensitivities, fpr = roc_auc_xgb$roc_curve$specificities, model = "Boosted Tree")
+
+roc_combined <- rbind(roc_dt_df, roc_rf_df, roc_xgb_df)
+
+# Plot ROC curves using ggplot
+ggplot(roc_combined, aes(x = 1 - fpr, y = tpr, color = model)) +
+  geom_line(size = 1) +
+  geom_abline(linetype = "dashed", color = "gray") +
+  labs(title = "ROC Curves for Decision Tree, Random Forest, and Boosted Tree",
+       x = "False Positive Rate (1 - Specificity)", 
+       y = "True Positive Rate (Sensitivity)") +
+  theme_minimal()
+
+```
+#7a 
+```{r}
+# Function to calculate profit and loss based on confusion matrix
+calculate_total_profit_loss <- function(conf_matrix, profit_value, loss_value, missed_profit, charged_off_loss) {
+  # Extract confusion matrix table
+  cm_table <- conf_matrix$table
+  
+  # Calculate profit/loss for each cell
+  total_profit_loss <- sum(
+    cm_table["Fully Paid", "Fully Paid"] * profit_value,         # True Positives
+    cm_table["Fully Paid", "Charged Off"] * missed_profit,      # False Negatives (Missed profit)
+    cm_table["Charged Off", "Fully Paid"] * loss_value,         # False Positives (Bad investment)
+    cm_table["Charged Off", "Charged Off"] * charged_off_loss   # True Negatives (Partial loss)
+  )
+  return(total_profit_loss)
+}
+
+# Parameters
+invest_amount <- 100  # $100 investment
+avg_int_rate <- 0.112  # Average interest rate (11.2%)
+duration_years <- 3  # Loan duration
+profit_value <- invest_amount * (1 + avg_int_rate * duration_years)  # Expected profit from fully paid loans
+charged_off_recovery_rate <- 0.30  # Recovery rate for charged off loans
+loss_value <- invest_amount * (1 - charged_off_recovery_rate)  # Expected loss from charged off loans
+missed_profit <- invest_amount * (1 + avg_int_rate * duration_years)  # Missed profit for fully paid loans
+charged_off_loss <- invest_amount * (1 - charged_off_recovery_rate)  # Loss from charged off loans
+
+# Confusion matrix for Decision Tree
+val_pred_dt <- predict(lcDT1_p, lcdfTst, type = "class")
+val_class_dt <- factor(val_pred_dt, levels = levels(lcdfTst$loan_status))
+
+# Generate confusion matrix for Decision Tree
+conf_matrix_dt <- confusionMatrix(val_class_dt, lcdfTst$loan_status)
+print(conf_matrix_dt)
+
+# Total profit/loss for Decision Tree
+total_profit_loss_dt <- calculate_total_profit_loss(conf_matrix_dt, profit_value, loss_value, missed_profit, charged_off_loss)
+cat("Total Profit/Loss for Decision Tree: $", total_profit_loss_dt, "\n")
+
+# Repeat for Random Forest
+val_pred_rf <- predict(rfModel1, lcdfTst)$predictions[, "Fully Paid"]  # Get predicted probabilities
+val_class_rf <- ifelse(val_pred_rf > 0.5, "Fully Paid", "Charged Off")  # Classify based on threshold
+
+# Generate confusion matrix for Random Forest
+conf_matrix_rf <- confusionMatrix(as.factor(val_class_rf), lcdfTst$loan_status)
+print(conf_matrix_rf)
+
+# Total profit/loss for Random Forest
+total_profit_loss_rf <- calculate_total_profit_loss(conf_matrix_rf, profit_value, loss_value, missed_profit, charged_off_loss)
+cat("Total Profit/Loss for Random Forest: $", total_profit_loss_rf, "\n")
+
+# Repeat for Boosted Tree
+val_pred_xgb <- predict(xgbModel, dtest)  # Get predicted probabilities
+val_class_xgb <- ifelse(val_pred_xgb > 0.5, "Fully Paid", "Charged Off")  # Classify based on threshold
+
+# Generate confusion matrix for Boosted Tree
+conf_matrix_xgb <- confusionMatrix(as.factor(val_class_xgb), lcdfTst$loan_status)
+print(conf_matrix_xgb)
+
+# Total profit/loss for Boosted Tree
+total_profit_loss_xgb <- calculate_total_profit_loss(conf_matrix_xgb, profit_value, loss_value, missed_profit, charged_off_loss)
+cat("Total Profit/Loss for Boosted Tree: $", total_profit_loss_xgb, "\n")
+
+```
+#7b
+```{r}
+# Function to calculate total profit for a given threshold
+calculate_total_profit_at_threshold <- function(predictions, actuals, threshold, profit_fully_paid, loss_charged_off) {
+  # Convert predictions to binary based on threshold
+  predicted_class <- ifelse(predictions > threshold, "Fully Paid", "Charged Off")
+  
+  # Confusion matrix
+  cm <- table(Predicted = predicted_class, Actual = actuals)
+  
+  # Check if confusion matrix contains the necessary entries
+  TP <- ifelse("Fully Paid" %in% rownames(cm) && "Fully Paid" %in% colnames(cm), cm["Fully Paid", "Fully Paid"], 0)
+  FN <- ifelse("Charged Off" %in% rownames(cm) && "Fully Paid" %in% colnames(cm), cm["Charged Off", "Fully Paid"], 0)
+  FP <- ifelse("Fully Paid" %in% rownames(cm) && "Charged Off" %in% colnames(cm), cm["Fully Paid", "Charged Off"], 0)
+  TN <- ifelse("Charged Off" %in% rownames(cm) && "Charged Off" %in% colnames(cm), cm["Charged Off", "Charged Off"], 0)
+  
+  # Calculate total profit
+  total_profit <- (TP * profit_fully_paid) - (FP * loss_charged_off) - (FN * profit_fully_paid)
+  return(total_profit)
+}
+
+# Function to generate a range of thresholds and calculate the profit at each threshold
+find_optimal_threshold <- function(predictions, actuals, profit_fully_paid, loss_charged_off) {
+  thresholds <- seq(0, 1, by = 0.01)  # Test thresholds from 0 to 1
+  profits <- sapply(thresholds, function(t) calculate_total_profit_at_threshold(predictions, actuals, t, profit_fully_paid, loss_charged_off))
+  
+  # Find the best threshold (maximum profit)
+  best_threshold <- thresholds[which.max(profits)]
+  best_profit <- max(profits)
+  
+  return(list(threshold = best_threshold, profit = best_profit, thresholds = thresholds, profits = profits))
+}
+
+# Define profit and loss values
+profit_fully_paid <- 33.6  # Based on average interest rate
+loss_charged_off <- 70  # Based on recoveries from charged off loans
+
+# Decision Tree Model
+dt_predictions <- predict(lcDT1_p, newdata = lcdfTst, type = "prob")[, 2]
+dt_result <- find_optimal_threshold(dt_predictions, lcdfTst$loan_status, profit_fully_paid, loss_charged_off)
+
+# Random Forest Model
+rf_predictions <- predict(rfModel1, lcdfTst)$predictions[, "Fully Paid"]
+rf_result <- find_optimal_threshold(rf_predictions, lcdfTst$loan_status, profit_fully_paid, loss_charged_off)
+
+# Boosted Tree Model
+xgb_predictions <- predict(xgbModel, dtest)
+xgb_result <- find_optimal_threshold(xgb_predictions, lcdfTst$loan_status, profit_fully_paid, loss_charged_off)
+
+# Print out the results
+cat("Decision Tree: Best Threshold =", dt_result$threshold, "with Profit: $", dt_result$profit, "\n")
+cat("Random Forest: Best Threshold =", rf_result$threshold, "with Profit: $", rf_result$profit, "\n")
+cat("Boosted Tree: Best Threshold =", xgb_result$threshold, "with Profit: $", xgb_result$profit, "\n")
+
+# Plot the results to visualize the threshold vs profit for each model
+threshold_df <- data.frame(
+  Threshold = dt_result$thresholds,
+  Profit_DT = dt_result$profits,
+  Profit_RF = rf_result$profits,
+  Profit_XGB = xgb_result$profits
+)
+
+# Plot cumulative profits across different thresholds for each model
+threshold_df_long <- threshold_df %>%
+  pivot_longer(cols = c(Profit_DT, Profit_RF, Profit_XGB), names_to = "Model", values_to = "Profit")
+
+ggplot(threshold_df_long, aes(x = Threshold, y = Profit, color = Model)) +
+  geom_line(size = 1) +
+  labs(title = "Cumulative Profit vs. Cutoff Probability", x = "Cutoff Probability", y = "Cumulative Profit") +
+  theme_minimal()
+
+# Compare these models to CD investment
+cd_profit <- nrow(lcdfTst) * 6  # Safe CD with $6 profit for each loan
+cat("Total Profit from Safe CD Investment: $", cd_profit, "\n")
+
+```
+#Question 8
+```{r}
+# Step 1: Define Returns
+lcdf$annualized_return <- ((lcdf$total_pymnt - lcdf$funded_amnt) / lcdf$funded_amnt) * (12 / 36) * 100
+print(paste("Number of rows after calculating annualized return:", nrow(lcdf)))
+
+# Step 2: Filter Data for Relevant Loan Statuses
+lcdf$loan_status <- ifelse(lcdf$loan_status == 1, "Fully Paid", "Charged Off")
+print("Unique loan statuses after mapping:")
+print(unique(lcdf$loan_status))
+
+# Filter for relevant statuses
+lcdf <- lcdf %>% filter(loan_status %in% c("Fully Paid", "Charged Off"))
+print(paste("Number of rows after filtering by loan status:", nrow(lcdf)))
+
+# Step 3: Remove potential data leakage variables
+varsToRemove <- c("total_pymnt", "total_pymnt_inv", "issue_d", "last_pymnt_d", "last_credit_pull_d")
+varsToRemove <- intersect(varsToRemove, colnames(lcdf))
+print("Removing these columns for data leakage:")
+print(varsToRemove)
+lcdf <- lcdf %>% select(-all_of(varsToRemove))
+
+# Remove rows with NA values in annualized_return
+print(paste("Number of NAs in annualized_return before removal:", sum(is.na(lcdf$annualized_return))))
+lcdf <- lcdf %>% filter(!is.na(annualized_return))
+print(paste("Number of rows after removing NAs in annualized_return:", nrow(lcdf)))
+
+# Step 4: Ensure enough data points for partitioning
+if (nrow(lcdf) < 2) {
+    stop("Not enough data points in 'lcdf' for partitioning. Please check the filtering conditions.")
+}
+
+# Step 5: Split Data into Training and Testing Sets
+set.seed(123)
+trainIndex <- createDataPartition(lcdf$annualized_return, p = 0.7, list = FALSE)
+training_data <- lcdf[trainIndex, ]
+testing_data <- lcdf[-trainIndex, ]
+
+# Step 6: Train GLM Model
+glm_model <- train(
+  annualized_return ~ ., 
+  data = training_data,
+  method = "glm",
+  trControl = trainControl(method = "cv", number = 5)
+)
+
+# Step 7: Train Random Forest Model with simplified parameter tuning
+tuneGrid_rf <- expand.grid(
+  .mtry = c(3, 5),         
+  .splitrule = "variance",
+  .min.node.size = c(5, 10)
+)
+
+# Train the Random Forest model with fewer trees and 3-fold cross-validation for speed
+rf_model <- train(
+  annualized_return ~ ., 
+  data = training_data,
+  method = "ranger",
+  tuneGrid = tuneGrid_rf,
+  trControl = trainControl(method = "cv", number = 3),
+  num.trees = 100,
+  importance = 'impurity'
+)
+
+print("Random Forest Model Training Complete:")
+print(rf_model$bestTune)
+
+# Step 8: Train XGBoost Model with parameter tuning
+train_matrix <- model.matrix(annualized_return ~ . - 1, data = training_data)
+test_matrix <- model.matrix(annualized_return ~ . - 1, data = testing_data)
+common_cols <- intersect(colnames(train_matrix), colnames(test_matrix))
+train_matrix <- train_matrix[, common_cols]
+test_matrix <- test_matrix[, common_cols]
+dtrain <- xgb.DMatrix(data = train_matrix, label = training_data$annualized_return)
+dtest <- xgb.DMatrix(data = test_matrix, label = testing_data$annualized_return)
+
+# Simplified parameter grid
+param_grid <- expand.grid(
+  max_depth = c(4, 6),
+  eta = c(0.01, 0.1),
+  nrounds = c(50, 100)
+)
+
+xgb_best <- NULL
+best_rmse <- Inf
+
+# Loop through the parameter grid
+for (i in 1:nrow(param_grid)) {
+  params <- list(
+    objective = "reg:squarederror",
+    eval_metric = "rmse",
+    max_depth = param_grid$max_depth[i],
+    eta = param_grid$eta[i]
+  )
+  
+  xgb_model <- xgb.train(
+    params = params,
+    data = dtrain,
+    nrounds = param_grid$nrounds[i],
+    watchlist = list(train = dtrain, eval = dtest),
+    early_stopping_rounds = 10,
+    verbose = 0
+  )
+  
+  xgb_pred <- predict(xgb_model, dtest)
+  xgb_rmse <- sqrt(mean((xgb_pred - testing_data$annualized_return)^2))
+  
+  if (xgb_rmse < best_rmse) {
+    best_rmse <- xgb_rmse
+    xgb_best <- xgb_model
+  }
+  
+  print(paste("Iteration:", i, "RMSE:", xgb_rmse))
+}
+
+print(paste("Best RMSE achieved:", best_rmse))
+
+# Step 9: Evaluate Model Performance
+glm_pred <- predict(glm_model, testing_data)
+glm_rmse <- sqrt(mean((glm_pred - testing_data$annualized_return)^2))
+glm_r2 <- cor(glm_pred, testing_data$annualized_return)^2
+
+rf_pred <- predict(rf_model, testing_data)
+rf_rmse <- sqrt(mean((rf_pred - testing_data$annualized_return)^2))
+rf_r2 <- cor(rf_pred, testing_data$annualized_return)^2
+
+xgb_pred <- predict(xgb_best, dtest)
+xgb_rmse <- sqrt(mean((xgb_pred - testing_data$annualized_return)^2))
+xgb_r2 <- cor(xgb_pred, testing_data$annualized_return)^2
+
+# Step 10: Compare Model Performance
+results <- data.frame(
+  Model = c("GLM", "Random Forest", "XGBoost"),
+  RMSE = c(glm_rmse, rf_rmse, best_rmse),
+  R2 = c(glm_r2, rf_r2, xgb_r2)
+)
+print("Model Performance Comparison:")
+print(results)
+
+# Step 11: Analyze Feature Importance
+rf_importance <- rf_model$finalModel$variable.importance
+rf_importance_df <- data.frame(
+  Variable = names(rf_importance),
+  Importance = rf_importance
+) %>% arrange(desc(Importance))
+print("Random Forest Feature Importance:")
+print(rf_importance_df)
+
+xgb_importance <- xgb.importance(model = xgb_best)
+print("XGBoost Feature Importance:")
+print(xgb_importance)
+
+# Plot feature importance for XGBoost
+xgb.plot.importance(xgb_importance)
+
+# Optional: Create a bar plot for Random Forest feature importance
+ggplot(rf_importance_df, aes(x = reorder(Variable, Importance), y = Importance)) +
+  geom_bar(stat = 'identity', fill = 'steelblue') +
+  coord_flip() +
+  labs(title = "Random Forest Feature Importance", x = "Variable", y = "Importance") +
+  theme_minimal()
+
+# Step 12: Create Plots for Predictions vs. Actual Returns
+
+# Plot Predictions vs Actual for Random Forest (Training Data)
+plot(
+  rf_pred, testing_data$annualized_return, 
+  main = "RF Predicted vs Actual Returns (Testing Data)", 
+  xlab = "Predicted Returns", 
+  ylab = "Actual Returns", 
+  pch = 20, col = "darkblue"
+)
+abline(a = 0, b = 1, col = "red", lwd = 2) # Reference line
+
+# Plot Predictions vs Actual for XGBoost (Testing Data)
+plot(
+  xgb_pred, testing_data$annualized_return, 
+  main = "XGBoost Predicted vs Actual Returns (Testing Data)", 
+  xlab = "Predicted Returns", 
+  ylab = "Actual Returns", 
+  pch = 20, col = "darkblue"
+)
+abline(a = 0, b = 1, col = "red", lwd = 2) # Reference line
+
+```
+#Question 9
+```{r}
+# Load necessary libraries
+library(xgboost)
+library(dplyr)
+
+# Step 1: Prepare Data for Loan Status Prediction Model
+# Convert loan_status to binary (1 for "Fully Paid", 0 for "Charged Off")
+training_data_status <- training_data %>% mutate(loan_status = ifelse(loan_status == "Fully Paid", 1, 0))
+testing_data_status <- testing_data %>% mutate(loan_status = ifelse(loan_status == "Fully Paid", 1, 0))
+
+# Create model matrices for loan status prediction
+train_matrix_status <- model.matrix(loan_status ~ . - 1, data = training_data_status)
+test_matrix_status <- model.matrix(loan_status ~ . - 1, data = testing_data_status)
+common_cols_status <- intersect(colnames(train_matrix_status), colnames(test_matrix_status))
+train_matrix_status <- train_matrix_status[, common_cols_status]
+test_matrix_status <- test_matrix_status[, common_cols_status]
+dtrain_status <- xgb.DMatrix(data = train_matrix_status, label = training_data_status$loan_status)
+dtest_status <- xgb.DMatrix(data = test_matrix_status, label = testing_data_status$loan_status)
+
+# Step 2: Train XGBoost Model for Loan Status Prediction
+param_grid_status <- expand.grid(
+  max_depth = c(4, 6),
+  eta = c(0.01, 0.1),
+  nrounds = c(50, 100)
+)
+
+xgb_best_status <- NULL
+best_auc_status <- 0
+
+# Loop through parameter grid for status model tuning
+for (i in 1:nrow(param_grid_status)) {
+  params <- list(
+    objective = "binary:logistic",
+    eval_metric = "auc",
+    max_depth = param_grid_status$max_depth[i],
+    eta = param_grid_status$eta[i]
+  )
+  
+  # Train the XGBoost model for loan status
+  xgb_model_status <- xgb.train(
+    params = params,
+    data = dtrain_status,
+    nrounds = param_grid_status$nrounds[i],
+    watchlist = list(train = dtrain_status, eval = dtest_status),
+    early_stopping_rounds = 10,
+    verbose = 0
+  )
+  
+  # Calculate AUC on the validation set
+  status_pred_probs <- predict(xgb_model_status, dtest_status)
+  auc_status <- as.numeric(xgb_model_status$evaluation_log[which.max(xgb_model_status$evaluation_log$train_auc), "eval_auc"])
+  
+  # Track the best model based on AUC
+  if (auc_status > best_auc_status) {
+    best_auc_status <- auc_status
+    xgb_best_status <- xgb_model_status
+  }
+  
+  print(paste("Iteration:", i, "AUC:", auc_status))
+}
+
+print(paste("Best AUC for Loan Status Model:", best_auc_status))
+
+# Step 3: Investment Selection using Combined Models
+
+# Filter then Rank Approach:
+# Predict the probability of being "Fully Paid" using the loan status model
+status_pred_probs <- predict(xgb_best_status, dtest_status)
+loans_fully_paid <- testing_data[status_pred_probs > 0.5, ]  # Filter loans with high probability of being fully paid
+
+# Predict returns for the filtered loans using the returns model
+test_matrix_returns <- model.matrix(annualized_return ~ . - 1, data = loans_fully_paid)
+dtest_returns <- xgb.DMatrix(data = test_matrix_returns[, common_cols])
+pred_return_probs <- predict(xgb_best, dtest_returns)
+loans_fully_paid$predicted_returns <- pred_return_probs
+
+# Rank loans by predicted returns and select the top N loans for investment
+loans_ranked_by_returns <- loans_fully_paid[order(-loans_fully_paid$predicted_returns), ]
+top_loans_for_investment <- head(loans_ranked_by_returns, 10)
+
+print("Top 10 Loans for Investment (Filter then Rank):")
+print(top_loans_for_investment)
+
+# Weighted Scoring Approach:
+# Combine scores with weights: 60% for loan status, 40% for predicted returns
+weighted_score <- 0.6 * status_pred_probs[status_pred_probs > 0.5] + 0.4 * pred_return_probs
+loans_fully_paid$weighted_score <- weighted_score
+
+# Rank loans by weighted score and select top N loans
+loans_ranked_by_weighted_score <- loans_fully_paid[order(-loans_fully_paid$weighted_score), ]
+top_loans_for_investment_weighted <- head(loans_ranked_by_weighted_score, 10)
+
+print("Top 10 Loans for Investment (Weighted Scoring):")
+print(top_loans_for_investment_weighted)
+
+# Performance Comparison:
+# Total return for each approach
+total_return_filter_rank <- sum(top_loans_for_investment$predicted_returns)
+total_return_weighted <- sum(top_loans_for_investment_weighted$predicted_returns)
+
+cat("Total Return using Filter then Rank approach:", total_return_filter_rank, "\n")
+cat("Total Return using Weighted Scoring approach:", total_return_weighted, "\n")
+
+# Loan Status Model Performance (Used Separately)
+total_return_status_only <- sum(loans_fully_paid$predicted_returns)
+cat("Total Return using only Loan Status Model:", total_return_status_only, "\n")
+
+# Loan Returns Model Performance:
+all_test_returns <- predict(xgb_best, dtest)
+total_return_returns_only <- sum(all_test_returns)
+cat("Total Return using only Loan Returns Model:", total_return_returns_only, "\n")
+
+# Display comparison of the models' performance
+results <- data.frame(
+  Approach = c("Filter then Rank", "Weighted Scoring", "Status Only", "Returns Only"),
+  Total_Return = c(total_return_filter_rank, total_return_weighted, total_return_status_only, total_return_returns_only)
+)
+print("Comparison of Investment Approaches:")
+print(results)
+
+```
+
+#Question 10
+```{r}
+# Question 10: Develop models for lower-grade loans (C and below) and assess investment approaches
+
+
+# Step 1: Filter loans to include only lower-grade loans (C and below)
+lcdf_low_grade <- lcdf %>% filter(grade %in% c("C", "D", "E", "F", "G"))
+
+# Step 2: Prepare Data for Loan Status Prediction Model for Lower-Grade Loans
+# Convert loan_status to binary (1 for "Fully Paid", 0 for "Charged Off")
+training_data_low <- training_data %>% filter(grade %in% c("C", "D", "E", "F", "G")) %>%
+  mutate(loan_status = ifelse(loan_status == "Fully Paid", 1, 0))
+testing_data_low <- testing_data %>% filter(grade %in% c("C", "D", "E", "F", "G")) %>%
+  mutate(loan_status = ifelse(loan_status == "Fully Paid", 1, 0))
+
+# Create model matrices for loan status prediction
+train_matrix_low_status <- model.matrix(loan_status ~ . - 1, data = training_data_low)
+test_matrix_low_status <- model.matrix(loan_status ~ . - 1, data = testing_data_low)
+common_cols_low_status <- intersect(colnames(train_matrix_low_status), colnames(test_matrix_low_status))
+train_matrix_low_status <- train_matrix_low_status[, common_cols_low_status]
+test_matrix_low_status <- test_matrix_low_status[, common_cols_low_status]
+dtrain_low_status <- xgb.DMatrix(data = train_matrix_low_status, label = training_data_low$loan_status)
+dtest_low_status <- xgb.DMatrix(data = test_matrix_low_status, label = testing_data_low$loan_status)
+
+# Step 3: Train XGBoost Model for Loan Status Prediction (Lower-Grade Loans)
+param_grid_low_status <- expand.grid(
+  max_depth = c(4, 6),
+  eta = c(0.01, 0.1),
+  nrounds = c(50, 100)
+)
+
+xgb_best_low_status <- NULL
+best_auc_low_status <- 0
+
+# Loop through parameter grid for status model tuning (lower-grade loans)
+for (i in 1:nrow(param_grid_low_status)) {
+  params <- list(
+    objective = "binary:logistic",
+    eval_metric = "auc",
+    max_depth = param_grid_low_status$max_depth[i],
+    eta = param_grid_low_status$eta[i]
+  )
+  
+  # Train the XGBoost model for loan status
+  xgb_model_low_status <- xgb.train(
+    params = params,
+    data = dtrain_low_status,
+    nrounds = param_grid_low_status$nrounds[i],
+    watchlist = list(train = dtrain_low_status, eval = dtest_low_status),
+    early_stopping_rounds = 10,
+    verbose = 0
+  )
+  
+  # Calculate AUC on the validation set
+  status_pred_probs_low <- predict(xgb_model_low_status, dtest_low_status)
+  auc_low_status <- as.numeric(xgb_model_low_status$evaluation_log[which.max(xgb_model_low_status$evaluation_log$train_auc), "eval_auc"])
+  
+  # Track the best model based on AUC
+  if (auc_low_status > best_auc_low_status) {
+    best_auc_low_status <- auc_low_status
+    xgb_best_low_status <- xgb_model_low_status
+  }
+  
+  print(paste("Iteration:", i, "AUC:", auc_low_status))
+}
+
+print(paste("Best AUC for Loan Status Model (Lower Grade):", best_auc_low_status))
+
+# Step 4: Train the Return Prediction Model (`xgb_best_return`) for Lower-Grade Loans
+# Assuming `annualized_return` is the target variable for predicting returns
+train_matrix_returns <- model.matrix(annualized_return ~ . - 1, data = training_data_low)
+test_matrix_returns <- model.matrix(annualized_return ~ . - 1, data = testing_data_low)
+common_cols_returns <- intersect(colnames(train_matrix_returns), colnames(test_matrix_returns))
+train_matrix_returns <- train_matrix_returns[, common_cols_returns]
+test_matrix_returns <- test_matrix_returns[, common_cols_returns]
+dtrain_returns <- xgb.DMatrix(data = train_matrix_returns, label = training_data_low$annualized_return)
+dtest_returns <- xgb.DMatrix(data = test_matrix_returns, label = testing_data_low$annualized_return)
+
+# Train XGBoost Model for Return Prediction
+param_grid_returns <- expand.grid(
+  max_depth = c(4, 6),
+  eta = c(0.01, 0.1),
+  nrounds = c(50, 100)
+)
+
+xgb_best_return <- NULL
+best_rmse_returns <- Inf
+
+# Loop through parameter grid for returns model tuning
+for (i in 1:nrow(param_grid_returns)) {
+  params <- list(
+    objective = "reg:squarederror",
+    eval_metric = "rmse",
+    max_depth = param_grid_returns$max_depth[i],
+    eta = param_grid_returns$eta[i]
+  )
+  
+  # Train the XGBoost model for returns
+  xgb_model_returns <- xgb.train(
+    params = params,
+    data = dtrain_returns,
+    nrounds = param_grid_returns$nrounds[i],
+    watchlist = list(train = dtrain_returns, eval = dtest_returns),
+    early_stopping_rounds = 10,
+    verbose = 0
+  )
+  
+  # Calculate RMSE on the validation set
+  return_pred_probs <- predict(xgb_model_returns, dtest_returns)
+  rmse_returns <- sqrt(mean((return_pred_probs - testing_data_low$annualized_return)^2))
+  
+  # Track the best model based on RMSE
+  if (rmse_returns < best_rmse_returns) {
+    best_rmse_returns <- rmse_returns
+    xgb_best_return <- xgb_model_returns
+  }
+  
+  print(paste("Iteration:", i, "RMSE:", rmse_returns))
+}
+
+print(paste("Best RMSE for Return Model (Lower Grade):", best_rmse_returns))
+
+# Step 5: Investment Selection using Combined Models for Lower-Grade Loans
+
+# Filter then Rank Approach:
+# Predict the probability of being "Fully Paid" using the loan status model (lower-grade loans)
+status_pred_probs_low <- predict(xgb_best_low_status, dtest_low_status)
+loans_fully_paid_low <- testing_data_low[status_pred_probs_low > 0.5, ]  # Filter loans with high probability of being fully paid
+
+# Predict returns for the filtered loans using the `xgb_best_return`
+test_matrix_returns_low <- model.matrix(annualized_return ~ . - 1, data = loans_fully_paid_low)
+common_cols_low_returns <- intersect(colnames(train_matrix_returns), colnames(test_matrix_returns_low))
+test_matrix_returns_low <- test_matrix_returns_low[, common_cols_low_returns]
+dtest_returns_low <- xgb.DMatrix(data = test_matrix_returns_low)
+
+pred_return_probs_low <- predict(xgb_best_return, dtest_returns_low)
+loans_fully_paid_low$predicted_returns <- pred_return_probs_low
+
+# Rank loans by predicted returns and select the top N loans for investment
+loans_ranked_by_returns_low <- loans_fully_paid_low[order(-loans_fully_paid_low$predicted_returns), ]
+top_loans_for_investment_low <- head(loans_ranked_by_returns_low, 10)
+
+print("Top 10 Loans for Investment (Filter then Rank - Lower Grade):")
+print(top_loans_for_investment_low)
+
+# Weighted Scoring Approach for Lower-Grade Loans:
+# Combine scores with weights: 60% for loan status, 40% for predicted returns
+weighted_score_low <- 0.6 * status_pred_probs_low[status_pred_probs_low > 0.5] + 0.4 * pred_return_probs_low
+loans_fully_paid_low$weighted_score <- weighted_score_low
+
+# Rank loans by weighted score and select top N loans
+loans_ranked_by_weighted_score_low <- loans_fully_paid_low[order(-loans_fully_paid_low$weighted_score), ]
+top_loans_for_investment_weighted_low <- head(loans_ranked_by_weighted_score_low, 10)
+
+print("Top 10 Loans for Investment (Weighted Scoring - Lower Grade):")
+print(top_loans_for_investment_weighted_low)
+
+# Step 6: Calculate Total Returns and Compare Approaches for Lower-Grade Loans
+total_return_filter_rank_low <- sum(top_loans_for_investment_low$predicted_returns)
+total_return_weighted_low <- sum(top_loans_for_investment_weighted_low$predicted_returns)
+
+cat("Total Return using Filter then Rank approach (Lower Grade):", total_return_filter_rank_low, "\n")
+cat("Total Return using Weighted Scoring approach (Lower Grade):", total_return_weighted_low, "\n")
+
+# Step 7: Compare Performance with Results from Question 9
+result_comparison_low <- data.frame(
+  Approach = c("Lower Grade - Filter then Rank", "Lower Grade - Weighted Scoring"),
+  Total_Return = c(total_return_filter_rank_low, total_return_weighted_low)
+)
+
+print("Comparison of Investment Approaches for Lower-Grade Loans:")
+print(result_comparison_low)
+
+# Step 8: Determine the Recommended Investment Approach
+# Compare the returns for lower-grade models against the overall models from Question 9
+overall_results <- data.frame(
+  Approach = c("Overall - Filter then Rank", "Overall - Weighted Scoring", "Lower Grade - Filter then Rank", "Lower Grade - Weighted Scoring"),
+  Total_Return = c(total_return_filter_rank, total_return_weighted, total_return_filter_rank_low, total_return_weighted_low)
+)
+
+print("Comparison of Overall and Lower-Grade Investment Approaches:")
+print(overall_results)
+
+# Provide a recommendation to the client based on which approach yields the highest return
+best_approach <- overall_results[which.max(overall_results$Total_Return), ]
+cat("Recommended Investment Approach for the Client:", best_approach$Approach, "with a total return of:", best_approach$Total_Return, "\n")
+
+```
